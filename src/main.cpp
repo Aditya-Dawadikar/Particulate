@@ -5,34 +5,18 @@
 #include "simulation.hpp"
 #include <SDL2/SDL.h>
 #include "utils.hpp"
+#include "emitter.hpp"
 
 int main() {
-    const int width = 512;
-    const int height = 512;
+    const int width = 420;
+    const int height = 420;
     Renderer renderer(width, height);
     Simulation sim(width, height);
 
     std::vector<Particle> particles;
-    // Spawn 100 random particles
-    for (int i = 0; i < 500; ++i) {
-        float x = randomFloat(10.0f, width - 10.0f);
-        float y = randomFloat(10.0f, height - 10.0f);
-        float vx = randomFloat(-50.0f, 50.0f);
-        float vy = randomFloat(-50.0f, 50.0f);
-        // float mass = randomFloat(0.5f, 2.0f);
-        float density = 1;
-        int radius = static_cast<int>(randomFloat(2.0f, 10.0f));
-        // int radius = 10;
-        // int r = static_cast<int>(randomFloat(50, 255));
-        // int g = static_cast<int>(randomFloat(50, 255));
-        // int b = static_cast<int>(randomFloat(50, 255));
 
-        if (i%2==0){
-            particles.emplace_back(x, y, vx, vy, density, radius, 0, 255, 0);
-        }else{
-            particles.emplace_back(x, y, vx, vy, density, radius, 255, 0, 0);
-        }
-    }
+    // large particles
+    Emitter emitter1(width/2, 10, 10, 5000,2);
 
     bool paused = false;
     bool quit = false;
@@ -58,6 +42,7 @@ int main() {
         float dt = elapsed.count();
 
         if (!paused){
+            emitter1.start(dt, particles);
             sim.step(particles, dt);
         }
 
