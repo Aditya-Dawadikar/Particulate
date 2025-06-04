@@ -59,3 +59,27 @@ void Particle::clearForce(){
     this->fx = 0.0f;
     this->fy = 0.0f;
 }
+
+void Particle::serialize(float* pos, float* vel, float* force, float* massArr, int* radiusArr, int idx) const {
+    pos[2 * idx]     = x;
+    pos[2 * idx + 1] = y;
+
+    vel[2 * idx]     = vx;
+    vel[2 * idx + 1] = vy;
+
+    force[2 * idx]   = fx;
+    force[2 * idx + 1] = fy;
+
+    massArr[idx]     = mass;
+    radiusArr[idx]   = r;
+}
+
+void Particle::deserialize(const float* pos, const float* vel, int* radiusArr, int idx) {
+    x = pos[2 * idx];
+    y = pos[2 * idx + 1];
+
+    vx = vel[2 * idx];
+    vy = vel[2 * idx + 1];
+
+    r = radiusArr[idx];
+}

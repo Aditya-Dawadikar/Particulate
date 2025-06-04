@@ -6,17 +6,22 @@
 #include <SDL2/SDL.h>
 #include "utils.hpp"
 #include "emitter.hpp"
+#include "simulation_acc.cuh"
+#include <iostream>
 
 int main() {
     const int width = 420;
     const int height = 420;
     Renderer renderer(width, height);
-    Simulation sim(width, height);
+    // Simulation sim(width, height);
+    SimulationAcc sim(width, height, 200.0f, 20);
+
+    bool memoryTransferInProgress = false;
 
     std::vector<Particle> particles;
 
     // large particles
-    Emitter emitter1(width/2, 10, 10, 5000,2);
+    Emitter emitter1(width/2, 10, 1, 100,10);
 
     bool paused = false;
     bool quit = false;
@@ -43,6 +48,14 @@ int main() {
 
         if (!paused){
             emitter1.start(dt, particles);
+            if (!particles.empty()) {
+                std::cout << "Particle 0 position: "
+                        << particles[0].getX() << ", "
+                        << particles[0].getY() << "\n";
+            }
+
+            std::cout<<"Particle count: "<< particles.size()<<"\n";
+
             sim.step(particles, dt);
         }
 

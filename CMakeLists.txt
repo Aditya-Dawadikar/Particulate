@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.12)
 set(CMAKE_C_COMPILER /usr/bin/gcc-10)
 set(CMAKE_CXX_COMPILER /usr/bin/g++-10)
 
-project(particulate LANGUAGES C CXX)
+project(particulate LANGUAGES C CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -17,7 +17,7 @@ find_library(SDL2_GFX_LIB SDL2_gfx)
 include_directories(${SDL2_INCLUDE_DIRS})
 
 # Collect all source files (CPU only for now)
-file(GLOB_RECURSE SRC_FILES src/*.cpp)
+file(GLOB_RECURSE SRC_FILES src/*.cpp src/*.cu)
 
 # Executable
 add_executable(particulate ${SRC_FILES})

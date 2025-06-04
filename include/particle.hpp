@@ -38,4 +38,8 @@ class Particle{
         void applyForce(float dfx, float dfy);
         void clearForce();
 
+        // GPU compatibility
+        void serialize(float* pos, float* vel, float* force, float* mass, int* radius, int idx) const;
+        void deserialize(const float* pos, const float* vel, int* radius, int idx);
+
 };
