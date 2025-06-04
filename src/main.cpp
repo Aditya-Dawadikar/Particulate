@@ -14,14 +14,15 @@ int main() {
     const int height = 420;
     Renderer renderer(width, height);
     // Simulation sim(width, height);
-    SimulationAcc sim(width, height, 200.0f, 20);
+    SimulationAcc sim(width, height, 5);
 
     bool memoryTransferInProgress = false;
 
     std::vector<Particle> particles;
 
     // large particles
-    Emitter emitter1(width/2, 10, 1, 100,10);
+    Emitter emitter1(width/2-50, 10, 20, 5000,1);
+    Emitter emitter2(width/2+50, 10, 20, 5000,1);
 
     bool paused = false;
     bool quit = false;
@@ -48,11 +49,7 @@ int main() {
 
         if (!paused){
             emitter1.start(dt, particles);
-            if (!particles.empty()) {
-                std::cout << "Particle 0 position: "
-                        << particles[0].getX() << ", "
-                        << particles[0].getY() << "\n";
-            }
+            emitter2.start(dt, particles);
 
             std::cout<<"Particle count: "<< particles.size()<<"\n";
 

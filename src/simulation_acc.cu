@@ -4,14 +4,14 @@
 #include "globals.hpp"
 
 __global__ void applyGravityKernel(float* forces, float* masses, float gravity, int count);
-__global__ void resolveImpulseKernel(float* positions, float* velocities, float* masses, int* radii, int count);
+__global__ void resolveImpulseKernel(float* forces, float* positions, float* velocities, float* masses, int* radii, int count, float dt);
 __global__ void applyFrictionKernel(float* velocities, float* positions, int count);
 __global__ void integrateKernel(float* positions, float* velocities, float* forces, float* masses, float dt, int count);
 __global__ void wallCollisionKernel(int height, int width, float* positions, float* velocities, float* forces, float* masses, int* radii, float dt, int count);
 __global__ void clearForcesKernel(float* forces, int count);
 
-SimulationAcc::SimulationAcc(int width, int height, float gravity, int cellSize)
-    : width(width), height(height), gravity(gravity), cellSize(cellSize),
+SimulationAcc::SimulationAcc(int width, int height, int cellSize)
+    : width(width), height(height), gravity(980.0f), cellSize(cellSize),
         d_positions(nullptr), d_velocities(nullptr), d_forces(nullptr),
         d_masses(nullptr), d_radii(nullptr), num_particles(0){}
 
@@ -52,8 +52,8 @@ void SimulationAcc::uploadParticles(const std::vector<Particle>& particles){
     std::vector<float> h_positions(2*n);
     std::vector<float> h_velocities(2*n);
     std::vector<float> h_forces(2*n);
-    std::vector<float> h_masses(2*n);
-    std::vector<int> h_radii(2*n);
+    std::vector<float> h_masses(n);
+    std::vector<int> h_radii(n);
 
     for(int i=0; i< n; ++i){
         h_positions[2*i] = particles[i].getX();
@@ -69,7 +69,6 @@ void SimulationAcc::uploadParticles(const std::vector<Particle>& particles){
     cudaMemcpy(d_positions, h_positions.data(), sizeof(float)*2*n, cudaMemcpyHostToDevice);
     cudaMemcpy(d_velocities, h_velocities.data(), sizeof(float)*2*n, cudaMemcpyHostToDevice);
     cudaMemcpy(d_forces, h_forces.data(), sizeof(float)*2*n, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_masses, h_masses.data(), sizeof(float)*2*n, cudaMemcpyHostToDevice);
     cudaMemcpy(d_masses, h_masses.data(), sizeof(float)*n, cudaMemcpyHostToDevice);
     cudaMemcpy(d_radii, h_radii.data(), sizeof(int)*n, cudaMemcpyHostToDevice);
 
@@ -103,7 +102,15 @@ void SimulationAcc::step(std::vector<Particle>& particles, float dt) {
 
     // 2. Compute physics using CUDA kernel(s)
     std::cout<<"Doing the Math...\n";
-    computePhysicsGPU(dt);
+    // computePhysicsGPU(dt);
+    int num_substeps = 4;
+    float substep_dt = dt / num_substeps;
+
+    // Run simulation in substeps
+    for (int i = 0; i < num_substeps; ++i) {
+        computePhysicsGPU(substep_dt);
+    }
+
 
     // 3. Download updated data back to CPU
     downloadParticles(particles);
@@ -122,7 +129,7 @@ void SimulationAcc::computePhysicsGPU(float dt) {
     applyGravityKernel<<<blocks, threadsPerBlock>>>(d_forces, d_masses, gravity, num_particles);
 
     // 2. Resolve impulse (naive n^2 for now, will optimize later)
-    resolveImpulseKernel<<<blocks, threadsPerBlock>>>(d_positions, d_velocities, d_masses, d_radii, num_particles);
+    resolveImpulseKernel<<<blocks, threadsPerBlock>>>(d_forces, d_positions, d_velocities, d_masses, d_radii, num_particles, dt);
 
     // 3. Apply friction
     // applyFrictionKernel<<<blocks, threadsPerBlock>>>(d_velocities, d_positions, num_particles);
@@ -146,7 +153,7 @@ __global__ void applyGravityKernel(float* forces, float* masses, float gravity, 
     forces[2*idx+1] += masses[idx]*gravity;
 }
 
-__global__ void resolveImpulseKernel(float* positions, float* velocities, float* masses, int* radii, int count){
+__global__ void resolveImpulseKernel(float* forces, float* positions, float* velocities, float* masses, int* radii, int count, float dt){
     int i = blockIdx.x* blockDim.x + threadIdx.x;
     if (i>=count) return;
 
@@ -162,51 +169,63 @@ __global__ void resolveImpulseKernel(float* positions, float* velocities, float*
 
         float xj = positions[2*j];
         float yj = positions[2*j+1];
+        float vxj = velocities[2*j];
+        float vyj = velocities[2*j+1];
+        float mj = masses[j];
+        int rj = radii[j];
 
         float dx = xj - xi;
         float dy = yj - yi;
-
         float dist2 = dx*dx + dy*dy;
-        float rj = radii[j];
-        float minDist = ri+rj;
+        float minDist = ri + rj;
 
-        if(dist2 < minDist*minDist){
-            // normalize direction
+        if(dist2 < minDist*minDist && dist2 > 0.0001f){
             float dist = sqrtf(dist2);
-            if (dist < 1e-6f) continue;
+            float nx = dx / dist;
+            float ny = dy / dist;
 
-            float nx = dx/dist;
-            float ny = dy/dist;
+            // Relative velocity
+            float rvx = vxj - vxi;
+            float rvy = vyj - vyi;
 
-            float penetration = minDist - dist;
-
-            float rvx = velocities[2*j] - velocities[2*i];
-            float rvy = velocities[2*j+1] - velocities[2*i+1]; 
-
+            // Velocity along normal
             float velAlongNormal = rvx * nx + rvy * ny;
+
+            // Only resolve if particles are moving toward each other
             if (velAlongNormal > 0) continue;
 
-            float e = 0.3f;
-            float m1 = masses[i];
-            float m2 = masses[j];
+            // Coefficient of restitution (0 = perfectly inelastic, 1 = perfectly elastic)
+            float e = 0.2f;  // Adjust as needed
 
-            float impulse = -(1.0f + e) * velAlongNormal / (1.0f / m1 + 1.0f / m2);
+            // Calculate impulse scalar
+            float impulse = -(1.0f + e) * velAlongNormal;
+            impulse /= (1.0f/mi + 1.0f/mj);
 
-            float impulseX = impulse * nx * 0.8;
-            float impulseY = impulse * ny * 0.8;
+            // Apply impulse to both particles (equal and opposite)
+            float impulseX = impulse * nx;
+            float impulseY = impulse * ny;
 
-            // Apply only to i for stability
-            velocities[2*i] -= impulseX / m1;
-            velocities[2*i+1] -= impulseY / m1;
+            // Update velocities (atomic operations for thread safety)
+            atomicAdd(&velocities[2*i], -impulseX / mi);
+            atomicAdd(&velocities[2*i+1], -impulseY / mi);
+            atomicAdd(&velocities[2*j], impulseX / mj);
+            atomicAdd(&velocities[2*j+1], impulseY / mj);
 
-            // Soft positional correction
-            float percent = 0.2f;
-            float slop = 0.01f;
-            float correctionMag = fmaxf(penetration - slop, 0.0f) / (1.0f / m1 + 1.0f / m2) * percent;
+            // Positional correction to prevent sinking
+            float percent = 0.2f; // Usually 20% to 80%
+            float slop = 0.01f;   // Usually 0.01 to 0.1
+            float penetration = minDist - dist;
+            penetration=(penetration, 2.0f);
+            float correction = fmaxf(penetration - slop, 0.0f) / (1.0f/mi + 1.0f/mj) * percent;
 
-            positions[2*i] -= correctionMag * nx / m1;
-            positions[2*i+1] -= correctionMag * ny / m1;
+            float correctionX = correction * nx;
+            float correctionY = correction * ny;
 
+            // Apply positional correction (atomic operations for thread safety)
+            atomicAdd(&positions[2*i], -correctionX / mi);
+            atomicAdd(&positions[2*i+1], -correctionY / mi);
+            atomicAdd(&positions[2*j], correctionX / mj);
+            atomicAdd(&positions[2*j+1], correctionY / mj);
 
         }
     }

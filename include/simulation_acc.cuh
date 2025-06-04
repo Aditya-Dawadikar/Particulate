@@ -5,7 +5,7 @@
 
 class SimulationAcc{
     public:
-        SimulationAcc(int width, int height, float gravity, int cellSize);
+        SimulationAcc(int width, int height, int cellSize);
     
         void step(std::vector<Particle>& particle, float dt);
 

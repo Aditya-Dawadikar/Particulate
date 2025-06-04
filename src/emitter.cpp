@@ -32,8 +32,8 @@ void Emitter::start(float dt, std::vector<Particle>& particles){
         // g=255;
         // b=255;
         hsvToRgb(hue, 1.0f, 1.0f, r, g, b);
-        // hue += 0.1;
-        hue += 30;
+        hue += 0.1;
+        // hue += 30;
         if (hue >= 360.0f) hue -= 360.0f;
 
         particles.emplace_back(x, y, vx, vy, density, radius, r, g, b);
